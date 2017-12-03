@@ -10,6 +10,6 @@ Also, to understanding how a computer works in my pursuit of pealing every layer
 ## How to Run
 The best way to run this game is in a MIPS emulator, like the MARS emulator (download here: http://courses.missouristate.edu/KenVollmar/mars/download.htm)
 
-In an emulator, simply run the code - it's that easy! Instructions to play the game are shown on the console upon successful start.
+In an emulator, simply assemble then run - it's that easy! Instructions to play the game are shown on the console upon successful start.
 
 Enjoy :)
