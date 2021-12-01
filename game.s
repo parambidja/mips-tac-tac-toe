@@ -1,610 +1,529 @@
-	.data				#data segment
-board:	.word line1, line2, line3
-line1:		.word 0, 0, 0
-line2:		.word 0, 0, 0
-line3:		.word 0, 0, 0
+.data
+instructions: .asciiz "Choose your type, X or O: \n"
+youchose: .asciiz "\nYou chose: "
 
-size:		.word 3
-.eqv		DATA_SIZE 4
+choice: .byte 'X' #this will store the choice that player1 has chosen
+otherchoice: .byte 'O' #this will store the choice that the cpu is assigned
 
-
-instructions:	.asciiz "This game of tic-tac-toe follows certain rules:\n"
-rule1:	.asciiz "1. For input, players must enter the X-position of a desired move, then a new line (i.e. enter/return), then the Y-position. For example: for the position (0,1) enter 0, hit enter, enter 1\n"
-rule2: .asciiz "2. The coordinates are 0-indexed and have the form (row, column). Meaning the top left cell is (0, 0) and bottom right cell is (2, 2). Make sure to only enter #s between 0 - 2 for X and Y.\n"
-rule3: .asciiz "3. If the given coordinate is occupied, you will be prompted to re-enter a valid move\n"
-rule4: .asciiz "4. In this implementation, 0 represents an empty cell, 1 represents an 'X', and 2 represents an 'O'\n"
-
+p2choice1: .asciiz "Player 2 will be: O\n"
+p2choice2: .asciiz "Player 2 will be: X\n"
+exiting: .asciiz "The Tic Tac Toe program is now exiting"
 newline: .asciiz "\n"
-space: .asciiz "  "
-player1Input: .asciiz "Player 1, input move: "
-player2Input: .asciiz "Player 2, input move: "
+border: .asciiz "\n-----------\n"
+instructions1: .asciiz "Player 1, choose a row on the board\n"
+instructions2: .asciiz "Player 1, choose a column on the board\n"
+invalidchoicemsg: .asciiz "That slot is already taken \n"
 
-player1WinStr: .asciiz "Player 1 wins!!"
-player2WinStr: .asciiz "Player 2 wins!!"
-tieGameStr: .asciiz "Tie game. No players won!!"
+cpuhaschosen: .asciiz "The CPU has chosen their slot!\n"
 
-	.align 2
-buffer: .space 8		# reserve space for two words
-n_in:	.space 4		# get input from the user
+checking: .asciiz "Checking row\n"
 
-	.text			# Code segment
-	.globl	main		# declare main to be global
+wonmsg: .asciiz "won won"
+notwonmsg: .asciiz "not won won"
+
+#the board, initially marked with numbers so that they can choose where they want
+board: .word row1, row2, row3
+row1: .word 0, 0, 0
+row2: .word 0, 0, 0
+row3: .word 0, 0, 0
+
+.text
 
 main:
-	j play_a_game
-	j exit	# in case of error
-
-play_a_game:
-	 # print instructions
- 	 la $a0, instructions
- 	 li $v0, 4
-	 syscall
-
-	 la $a0, rule1
-	 li $v0, 4
-	 syscall
-
-	 la $a0, rule2
-	 li $v0, 4
-	 syscall
+la $a0, instructions
+li $v0, 4
+syscall
 
-	 la $a0, rule3
-	 li $v0, 4
-	 syscall
+li $v0, 12
+syscall
+move $t0,$v0
+sb $t0, choice
 
-	 la $a0, rule4
-	 li $v0, 4
-	 syscall
+jal tellchoice
 
-	 # 4 set of moves
-	 jal draw_board
-	 jal XMove
-	 jal draw_board
-	 jal YMove
+#there are 9 slots in the board, so run that amount of times
+jal pchoose
+jal cchoose
+jal pchoose
+jal checkgameover
+jal cchoose
+jal checkgameover
+jal pchoose
+jal checkgameover
+jal cchoose
+jal checkgameover
+jal pchoose
+jal checkgameover
+jal cchoose
+jal checkgameover
+jal pchoose
+jal checkgameover
 
-	 jal draw_board
-	 jal XMove
-	 jal draw_board
-	 jal YMove
+#jal pchoose
+#jal printboard
+#jal pchoose
+#jal printboard
+#jal checkRow1
 
-	 jal draw_board
-	 jal XMove
-	 jal draw_board
-	 jal YMove
+j exit
 
-	 jal draw_board
-	 jal XMove
-	 jal draw_board
-	 jal YMove
+#a game is over if a row is filled all the same, a column is all the same, or if a diagnol is all the same
+checkgameover:
 
-	 # last move
-	 jal draw_board
-	 jal XMove
-	 # if no one has won yet, its a tie
-	 jal tieGame
+addi $sp, $sp, -4
+sw $ra, 0($sp)
 
-	 j exit
+#check rows
+jal checkRow1
 
-tieGame:
+lw $ra, 0($sp)
+addi $sp, $sp, 4
 
-	# draw board
-	jal draw_board
+#return
+jr $ra
 
-	# print player 1 wins
-	la $a0, tieGameStr
-	li $v0, 4
-	syscall
+#have the cpu choose a spot on the board
+cchoose:
 
-	j exit		# game over
+#find the first available slot by checking each row one by one
+la $a1, row1
 
-XMove:
-	addi $sp, $sp, -4
-	sw $ra, 0($sp)
+#the index in the row
+li $t1, 0
 
-	# print command
-	la $a0, player1Input
-	li $v0, 4
-	syscall
+#multiply by 4 to get the proper shift amount based on the index
+sll $t3, $t1, 2
+#add this onto the address so we know where to get the slot address
+add $a1, $a1, $t3
 
-	# get input (seperated by new line)
-	# system call no. 5, read an integer.
-	li	$v0, 5		# prepare a system call. Type 5.
-	syscall			# read an int
-	move $a1, $v0
+#get the value at that slot
+lw $t0, 0($a1)
 
-	li	$v0, 5		# prepare a system call. Type 5.
-	syscall			# read an int
-	move $a2, $v0
+beqz $t0, select
 
-	jal play_x
+#move to the next slot in the row
+addi $a1, $a1, 4
 
-	beq $v0, -1, XMove
+#get the value at that slot
+lw $t0, 0($a1)
 
-	lw $ra, 0($sp)
-	addi $sp, $sp, 4
+beqz $t0, select
 
-	jr $ra
+#move to the next slot in the row
+addi $a1, $a1, 4
 
-YMove:
-	addi $sp, $sp, -4
-	sw $ra, 0($sp)
+#get the value at that slot
+lw $t0, 0($a1)
 
-	# print command
-	la $a0, player2Input
-	li $v0, 4
-	syscall
+beqz $t0, select
 
-	# get input (seperated by new line)
-	# system call no. 5, read an integer.
-	li	$v0, 5		# prepare a system call. Type 5.
-	syscall			# read an int
-	move $a1, $v0
+#if it got this far, there is no space in row1. check row 2 now
+#get the value at that slot
+la $a1, row2
+lw $t0, 0($a1)
+beqz $t0, select
 
-	li	$v0, 5		# prepare a system call. Type 5.
-	syscall			# read an int
-	move $a2, $v0
+addi $a1, $a1, 4
+lw $t0, 0($a1)
+beqz $t0, select
 
-	jal play_y
+addi $a1, $a1, 4
+lw $t0, 0($a1)
+beqz $t0, select
 
-	beq $v0, -1, YMove
+la $a1, row3
+lw $t0, 0($a1)
+beqz $t0, select
 
-	lw $ra, 0($sp)
-	addi $sp, $sp, 4
+addi $a1, $a1, 4
+lw $t0, 0($a1)
+beqz $t0, select
 
-	jr $ra
+addi $a1, $a1, 4
+lw $t0, 0($a1)
+beqz $t0, select
 
+jr $ra
 
-initialize:
-	la $v0, board
-	jr	$ra
+#a1 contains the address of where to set the selection
+select:
 
-# play_X(g, x, y) - changes g[x][y] = 1, returns 0 on success, -1 on error, and 1 if player 1 wins
-play_x:
+#get the letter the cpu is playing as
+lb $t3, otherchoice
+#set it in that place
+sw $t3, 0($a1)
 
-	addi $sp, $sp, -16	# push args onto stack
-	sw $ra, 0($sp)
-	sw $a0, 4($sp)
-	sw $a1, 8($sp)
-	sw $a2, 12($sp)
+la $a0, cpuhaschosen
+li $v0, 4
+syscall
 
-	la $t0, board         # put address of list into $t0
-	sll $t1, $a1, 2		# t1 = i*4
-	add $t1, $t1, $t0	#t1 = (i*4) + rowAddr
-	lw $t2, 0($t1)	# t2 = base address of the row
+jr $ra
 
-	sll $t1, $a2, 2		# t1 = y*4
-	add $s0, $t1, $t2	# s0 = (y*4) + colAddr
-	lw $t2, 0($s0)		# t2 now has the item at g[x][y]
+#have player 1 choose a spot on the board
+pchoose:
 
-	bne $t2, $zero, InvalidMove	# if cell != 0, invalid move
-	addi $t3, $zero, 1	# a valid move, so change g[x][y] = 1
-	sw $t3, 0($s0)
+#TODO push the return address onto the stack
+#save the current return address before calling another function
+add $t4, $ra, $zero
 
-	# check for winner with win(x,y)
-	move $a0, $a1
-	move $a1, $a2
-	jal win
-	beq $v0, 1, player1Win
+rechoose:
 
-	addi $v0, $zero, 0	# return 0 to signal valid non-winning move
+#show the board choices
+jal printboard
 
-	lw $ra, 0($sp)
-	lw $a0, 4($sp)
-	lw $a1, 8($sp)
-	lw $a2, 12($sp)
+#tell them to give us the number of the row and column they want to choose
+la $a0, instructions1
+li $v0, 4
+syscall
 
-	addi $sp, $sp, 16	# pop ra from stack
+#get the input
+li $v0, 5
+syscall
+move $t0,$v0
 
-	jr $ra
+la $a0, instructions2
+li $v0, 4
+syscall
 
-player1Win:
+#get the input
+li $v0, 5
+syscall
+move $t1,$v0
 
-	# draw board
-	jal draw_board
+#t0 holds row, t1 holds column
 
-	# print player 1 wins
-	la $a0, player1WinStr
-	li $v0, 4
-	syscall
+subi $t0, $t0, 1
+#multiply the row numbers by 2 so we can get the number of bytes to shift by
+sll $t3, $t0, 2
 
+la $a1, board #load the board address into the register
+add $a1, $a1, $t3 #add the shift amount to the board
+lw $a2, 0($a1) #load the address of row1
 
-	lw $ra, 0($sp)
-	lw $a0, 4($sp)
-	lw $a1, 8($sp)
-	lw $a2, 12($sp)
+subi $t1, $t1, 1
+sll $t3, $t1, 2
+add $a2, $a2, $t3
 
-	addi $sp, $sp, 16	# pop ra from stack
+lw $a0, 0($a2) #a2 is the address of the slot, we can keep this in mind for modification after checking
 
-	j exit		# game over
+#at this point, a0 contains the contents of the slot targetted.
 
+li $v0, 1 #print the slot contents for debugging
+syscall
 
+#check to see if it is taken already
+beqz $a0, nextstep
 
-# play_y(g, x, y) - changes g[x][y] = 1, returns 0 on success, -1 on error, and 1 if player 1 wins
-play_y:
+la $a0, invalidchoicemsg
+li $v0, 4
+syscall
 
-	addi $sp, $sp, -16	# push args onto stack
-	sw $ra, 0($sp)
-	sw $a0, 4($sp)
-	sw $a1, 8($sp)
-	sw $a2, 12($sp)
+j rechoose
 
-	la $t0, board         # put address of list into $t0
-	sll $t1, $a1, 2		# t1 = i*4
-	add $t1, $t1, $t0	#t1 = (i*4) + rowAddr
-	lw $t2, 0($t1)	# t2 = base address of the row
+nextstep:
 
-	sll $t1, $a2, 2		# t1 = y*4
-	add $s0, $t1, $t2	# s0 = (y*4) + colAddr
-	lw $t2, 0($s0)		# t2 now has the item at g[x][y]
+#get the X or O that the player chose at the beginning
+lb $t1, choice
 
-	bne $t2, $zero, InvalidMove	# if cell != 0, invalid move
-	addi $t3, $zero, 2	# a valid move, so change g[x][y] = 2
-	sw $t3, 0($s0)
+#modify the slot
+sw $t1, 0($a2)
 
-	# check for winner with win(x,y)
-	move $a0, $a1
-	move $a1, $a2
-	jal win
-	beq $v0, 1, player2Win
+#return to where this function was called
+jr $t4
 
-	addi $v0, $zero, 0	# return 0 to signal valid move
+tellchoice:
+la $a0, youchose
+li $v0, 4
+syscall
 
-	lw $ra, 0($sp)
-	lw $a0, 4($sp)
-	lw $a1, 8($sp)
-	lw $a2, 12($sp)
+#print the character they inputted
+lb $a0, choice
+li $v0, 11
+syscall
 
-	addi $sp, $sp, 16	# pop ra from stack
+#newline
+la $a0, newline
+li $v0, 4
+syscall
 
-	jr $ra
+#tell them what the other player will be
+li $t1, 'X'
+beq $t0, $t1, other
 
+#they chose O, so p2 will be X
+la $a0, p2choice2
+li $v0, 4
+syscall
 
-player2Win:
+li $t3, 'X'
+sb $t3, otherchoice
 
-	# draw board
-	jal draw_board
+jr $ra
 
-	# print player 1 wins
-	la $a0, player2WinStr
-	li $v0, 4
-	syscall
+other:
+la $a0, p2choice1
+li $v0, 4
+syscall
 
+li $t3, 'O'
+sb $t3, otherchoice
 
-	lw $ra, 0($sp)
-	lw $a0, 4($sp)
-	lw $a1, 8($sp)
-	lw $a2, 12($sp)
+jr $ra
 
-	addi $sp, $sp, 16	# pop ra from stack
+printslot:
 
-	j exit		# game over
+#jump to label if the slot value zero, otherwise print it as a byte
+beqz $a0, pnormal
+li $v0, 11
+syscall
 
-InvalidMove:
-	addi $v0, $zero, -1	# return -1 to signal invalid move
+jr $ra
 
-	lw $ra, 0($sp)
-	lw $a0, 4($sp)
-	lw $a1, 8($sp)
-	lw $a2, 12($sp)
+pnormal:
+li $v0, 1
+syscall
 
-	addi $sp, $sp, 16	# pop ra from stack
+jr $ra
 
-	jr $ra
+printboard:
 
-draw_board:
-	addi $sp, $sp, -8	# push ra onto stack
-	sw $ra, 0($sp)
-	sw $a0, 4($sp)
+addi $sp, $sp, -4
+sw $ra, 0($sp)
 
-	addi $t1, $zero, 0	# $t1 is i; i = 0
-	la $t2, board		# t2 = board
+#try printing the current board state
+la $a0, border
+li $v0, 4
+syscall
 
-	# print g[0][0]
-	lw $t1, 0($t2)
-	lw $t3, 0($t1)
+li $t0, ' '
+move $a0, $t0
+li $v0, 11
+syscall
 
-	move $a0, $t3
-	li $v0, 1
-	syscall
+la $a1, row1
+lw $a0, 0($a1)
+jal printslot
 
-	# print space
-	la $a0, space
-	li $v0, 4
-	syscall
+li $t0, ' '
+move $a0, $t0
+li $v0, 11
+syscall
 
-	# print g[0][1]
-	lw $t3, 4($t1)
-	move $a0, $t3
-	li $v0, 1
-	syscall
+li $t0, '|'
+move $a0, $t0
+li $v0, 11
+syscall
 
-	# print space
-	la $a0, space
-	li $v0, 4
-	syscall
+li $t0, ' '
+move $a0, $t0
+li $v0, 11
+syscall
 
-	# print g[0][2]
-	lw $t3, 8($t1)
-	move $a0, $t3
-	li $v0, 1
-	syscall
+lw $a2, 4($a1)
+move $a0,$a2
+jal printslot
 
+li $t0, ' '
+move $a0, $t0
+li $v0, 11
+syscall
 
-	# print new line
-	la $a0, newline
-	li $v0, 4
-	syscall
+li $t0, '|'
+move $a0, $t0
+li $v0, 11
+syscall
 
-	# print g[1][0]
-	lw $t1, 4($t2)
-	lw $t3, 0($t1)
+li $t0, ' '
+move $a0, $t0
+li $v0, 11
+syscall
 
-	move $a0, $t3
-	li $v0, 1
-	syscall
+lw $a2, 8($a1)
+move $a0,$a2
+jal printslot
 
-	# print space
-	la $a0, space
-	li $v0, 4
-	syscall
+#row2
 
-	# print g[1][1]
-	lw $t1, 4($t2)
-	lw $t3, 4($t1)
+li $t0, '\n'
+move $a0, $t0
+li $v0, 11
+syscall
 
-	move $a0, $t3
-	li $v0, 1
-	syscall
+li $t0, ' '
+move $a0, $t0
+li $v0, 11
+syscall
 
-	# print space
-	la $a0, space
-	li $v0, 4
-	syscall
+la $a1, row2
+lw $a2, 0($a1)
+move $a0,$a2
+jal printslot
 
-	# print g[1][2]
-	lw $t1, 4($t2)
-	lw $t3, 8($t1)
+li $t0, ' '
+move $a0, $t0
+li $v0, 11
+syscall
 
-	move $a0, $t3
-	li $v0, 1
-	syscall
+li $t0, '|'
+move $a0, $t0
+li $v0, 11
+syscall
 
-	# print new line
-	la $a0, newline
-	li $v0, 4
-	syscall
+li $t0, ' '
+move $a0, $t0
+li $v0, 11
+syscall
 
-	# print g[2][0]
-	lw $t1, 8($t2)
-	lw $t3, 0($t1)
+lw $a2, 4($a1)
+move $a0,$a2
+jal printslot
 
-	move $a0, $t3
-	li $v0, 1
-	syscall
+li $t0, ' '
+move $a0, $t0
+li $v0, 11
+syscall
 
-	# print space
-	la $a0, space
-	li $v0, 4
-	syscall
+li $t0, '|'
+move $a0, $t0
+li $v0, 11
+syscall
 
-	# print g[2][1]
-	lw $t3, 4($t1)
-	move $a0, $t3
-	li $v0, 1
-	syscall
+li $t0, ' '
+move $a0, $t0
+li $v0, 11
+syscall
 
-	# print space
-	la $a0, space
-	li $v0, 4
-	syscall
+lw $a2, 8($a1)
+move $a0,$a2
+jal printslot
 
-	# print g[2][2]
-	lw $t3, 8($t1)
-	move $a0, $t3
-	li $v0, 1
-	syscall
+#row3
 
-	# print new line
-	la $a0, newline
-	li $v0, 4
-	syscall
-	# print new line
-	la $a0, newline
-	li $v0, 4
-	syscall
+li $t0, '\n'
+move $a0, $t0
+li $v0, 11
+syscall
 
-	lw $ra, 0($sp)
-	lw $a0, 4($sp)
-	addi $sp, $sp, 8	# pop from stack
+li $t0, ' '
+move $a0, $t0
+li $v0, 11
+syscall
 
-	jr $ra
+la $a1, row3
+lw $a2, 0($a1)
+move $a0,$a2
+jal printslot
 
-# win(x,y) check if a move to (x,y) creates a win
-# returns 1 if win is found, 0 otherwise
-win:
-	addi $sp, $sp, -4
-	sw $ra, 0($sp)
+li $t0, ' '
+move $a0, $t0
+li $v0, 11
+syscall
 
-	jal winRow0
-	jal winRow1
-	jal winRow2
-	jal winCol0
-	jal winCol1
-	jal winCol2
-	jal winDiag0
-	jal winDiag1
+li $t0, '|'
+move $a0, $t0
+li $v0, 11
+syscall
 
+li $t0, ' '
+move $a0, $t0
+li $v0, 11
+syscall
 
-	addi $v0, $zero, 0	# return 0 - which means no winner
-	lw $ra, 0($sp)
-	addi $sp, $sp, 4	# pop from stack
+lw $a2, 4($a1)
+move $a0,$a2
+jal printslot
 
-	jr $ra
+li $t0, ' '
+move $a0, $t0
+li $v0, 11
+syscall
 
+li $t0, '|'
+move $a0, $t0
+li $v0, 11
+syscall
 
+li $t0, ' '
+move $a0, $t0
+li $v0, 11
+syscall
 
-winRow0:
-	# g[0][X]
+lw $a2, 8($a1)
+move $a0,$a2
+jal printslot
 
-	la $t2, board		# t2 = board
-	lw $t1, 0($t2)		# t1 = board[0]
-	lw $t3, 0($t1)		# t3 = board[0][0]
-	lw $t4, 4($t1)		# t3 = board[0][1]
-	lw $t5, 8($t1)		# t3 = board[0][2]
+la $a0, border
+li $v0, 4
+syscall
 
-	and $t6, $t3, $t4	# and the cells, if they are the same we should get 1 or 2
-	and $t6, $t6, $t5
-	bne $t6, $zero, winReturn	# if winner found, return 1
+lw $ra, 0($sp)
+addi $sp, $sp, 4
 
-	addi $v0, $zero, 0	# return 0 - no winner in this row
+jr $ra
 
-	jr $ra
+checkRow1:
 
-winRow1:
-	# g[1][X]
+addi $sp, $sp, -4
+sw $ra, 0($sp)
 
-	la $t2, board		# t2 = board
-	lw $t1, 4($t2)		# t1 = board[1]
-	lw $t3, 0($t1)		# t3 = board[1][0]
-	lw $t4, 4($t1)		# t3 = board[1][1]
-	lw $t5, 8($t1)		# t3 = board[1][2]
+la $a0, checking
+li $v0, 4
+syscall
 
-	and $t6, $t3, $t4	# and the cells, if they are the same we should get 1 or 2
-	and $t6, $t6, $t5
-	bne $t6, $zero, winReturn	# if winner found, return 1
+#load the address of row1
+la $a1, row1
 
-	addi $v0, $zero, 0	# return 0 - no winner in this row
+lw $t0, 0($a1)
+lw $t1, 4($a1)
+lw $t2, 8($a1)
 
-	jr $ra
+#if the first slot in the row is zero, there is no point in checking
+beqz $t0, exitcheckrow1
 
-winRow2:
-	# g[2][X]
+bne $t0, $t1, exitcheckrow1
+beq $t1, $t2, checkwhowon
 
-	la $t2, board		# t2 = board
-	lw $t1, 8($t2)		# t1 = board[2]
-	lw $t3, 0($t1)		# t3 = board[2][0]
-	lw $t4, 4($t1)		# t3 = board[2][1]
-	lw $t5, 8($t1)		# t3 = board[2][2]
+exitcheckrow1:
 
-	and $t6, $t3, $t4	# and the cells, if they are the same we should get 1 or 2
-	and $t6, $t6, $t5
-	bne $t6, $zero, winReturn	# if winner found, return 1
+lw $ra, 0($sp)
+addi $sp, $sp, 4
 
-	addi $v0, $zero, 0	# return 0 - no winner in this row
+jr $ra
 
-	jr $ra
+checkwhowon:
 
-winCol0:
-	# g[X][0]
+#t0 should contain if the winner is X or O
 
-	la $t2, board		# t2 = board
-	lw $t1, 0($t2)		# t1 = board[0]
-	lw $t3, 0($t1)		# t3 = board[0][0]
+#if t0 is equal to "choice" from the .data, then player1(human) won
+lb $t1, choice
 
-	lw $t1, 4($t2)		# t1 = board[1]
-	lw $t4, 0($t1)		# t3 = board[1][0]
+beq $t0, $t1, p1Wins
 
-	lw $t1, 8($t2)		# t1 = board[2]
-	lw $t5, 0($t1)		# t3 = board[2][0]
+j p2Wins
 
-	and $t6, $t3, $t4	# and the cells, if they are the same we should get 1 or 2
-	and $t6, $t6, $t5
-	bne $t6, $zero, winReturn	# if winner found, return 1
+la $a0, wonmsg
+li $v0, 4
+syscall
 
-	addi $v0, $zero, 0	# return 0 - no winner in this row
+j exit
 
-	jr $ra
+p1Wins:
 
-winCol1:
-	# g[X][1]
+la $a0, wonmsg
+li $v0, 4
+syscall
 
-	la $t2, board		# t2 = board
-	lw $t1, 0($t2)		# t1 = board[0]
-	lw $t3, 4($t1)		# t3 = board[0][1]
+j exit
 
-	lw $t1, 4($t2)		# t1 = board[1]
-	lw $t4, 4($t1)		# t3 = board[1][1]
+p2Wins:
 
-	lw $t1, 8($t2)		# t1 = board[2]
-	lw $t5, 4($t1)		# t3 = board[2][1]
+la $a0, notwonmsg
+li $v0, 4
+syscall
 
-	and $t6, $t3, $t4	# and the cells, if they are the same we should get 1 or 2
-	and $t6, $t6, $t5
-	bne $t6, $zero, winReturn	# if winner found, return 1
+j exit
 
-	addi $v0, $zero, 0	# return 0 - no winner in this row
-
-	jr $ra
-
-winCol2:
-	# g[X][2]
-
-	la $t2, board		# t2 = board
-	lw $t1, 0($t2)		# t1 = board[0]
-	lw $t3, 8($t1)		# t3 = board[0][2]
-
-	lw $t1, 4($t2)		# t1 = board[1]
-	lw $t4, 8($t1)		# t3 = board[1][2]
-
-	lw $t1, 8($t2)		# t1 = board[2]
-	lw $t5, 8($t1)		# t3 = board[2][2]
-
-	and $t6, $t3, $t4	# and the cells, if they are the same we should get 1 or 2
-	and $t6, $t6, $t5
-	bne $t6, $zero, winReturn	# if winner found, return 1
-
-	addi $v0, $zero, 0	# return 0 - no winner in this row
-
-	jr $ra
-
-winDiag0:
-
-
-	la $t2, board		# t2 = board
-	lw $t1, 0($t2)		# t1 = board[0]
-	lw $t3, 0($t1)		# t3 = board[0][0]
-
-	lw $t1, 4($t2)		# t1 = board[1]
-	lw $t4, 4($t1)		# t3 = board[1][1]
-
-	lw $t1, 8($t2)		# t1 = board[2]
-	lw $t5, 8($t1)		# t3 = board[2][2]
-
-	and $t6, $t3, $t4	# and the cells, if they are the same we should get 1 or 2
-	and $t6, $t6, $t5
-	bne $t6, $zero, winReturn	# if winner found, return 1
-
-	addi $v0, $zero, 0	# return 0 - no winner in this row
-
-	jr $ra
-
-winDiag1:
-
-
-	la $t2, board		# t2 = board
-	lw $t1, 0($t2)		# t1 = board[0]
-	lw $t3, 8($t1)		# t3 = board[0][2]
-
-	lw $t1, 4($t2)		# t1 = board[1]
-	lw $t4, 4($t1)		# t3 = board[1][1]
-
-	lw $t1, 8($t2)		# t1 = board[2]
-	lw $t5, 0($t1)		# t3 = board[2][0]
-
-	and $t6, $t3, $t4	# and the cells, if they are the same we should get 1 or 2
-	and $t6, $t6, $t5
-	bne $t6, $zero, winReturn	# if winner found, return 1
-
-	addi $v0, $zero, 0	# return 0 - no winner in this row
-
-	jr $ra
-
-winReturn:
-	addi $v0, $zero, 1	# return 1
-	lw $ra, 0($sp)
-	addi $sp, $sp, 4	# pop from stack
-
-	jr $ra
 exit:
-	li $v0, 10
-	syscall
+la $a0, exiting
+li $v0, 4
+syscall
